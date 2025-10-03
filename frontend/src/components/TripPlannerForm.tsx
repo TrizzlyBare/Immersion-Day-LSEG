@@ -3,6 +3,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
 export interface TripFormData {
   country: string;
@@ -31,6 +32,15 @@ interface TripPlannerFormProps {
   onGenerate: (formData: TripFormData) => Promise<TripPlan>;
 }
 
+const COUNTRIES = [
+  'Australia', 'Austria', 'Belgium', 'Brazil', 'Canada', 'China', 'Croatia', 'Czech Republic',
+  'Denmark', 'Egypt', 'Finland', 'France', 'Germany', 'Greece', 'Hungary', 'Iceland', 'India',
+  'Indonesia', 'Ireland', 'Italy', 'Japan', 'Malaysia', 'Mexico', 'Netherlands', 'New Zealand',
+  'Norway', 'Peru', 'Poland', 'Portugal', 'Russia', 'Singapore', 'South Africa', 'South Korea',
+  'Spain', 'Sweden', 'Switzerland', 'Thailand', 'Turkey', 'United Kingdom', 'United States',
+  'Vietnam'
+];
+
 export default function TripPlannerForm({ onGenerate }: TripPlannerFormProps) {
   const [formData, setFormData] = useState<TripFormData>({
     country: '',
@@ -43,8 +53,8 @@ export default function TripPlannerForm({ onGenerate }: TripPlannerFormProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.country.trim()) {
-      setError('Please enter a country');
+    if (!formData.country) {
+      setError('Please select a country');
       return;
     }
     
@@ -67,8 +77,8 @@ export default function TripPlannerForm({ onGenerate }: TripPlannerFormProps) {
     }
   };
 
-  const handleCountryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData(prev => ({ ...prev, country: e.target.value }));
+  const handleCountryChange = (value: string) => {
+    setFormData(prev => ({ ...prev, country: value }));
   };
 
   const handleDaysChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -87,14 +97,18 @@ export default function TripPlannerForm({ onGenerate }: TripPlannerFormProps) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="country">Country</Label>
-                <Input
-                  id="country"
-                  type="text"
-                  placeholder="e.g., Japan, Italy, Thailand"
-                  value={formData.country}
-                  onChange={handleCountryChange}
-                  required
-                />
+                <Select value={formData.country} onValueChange={handleCountryChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a country" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COUNTRIES.map((country) => (
+                      <SelectItem key={country} value={country}>
+                        {country}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               
               <div className="space-y-2">
