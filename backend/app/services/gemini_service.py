@@ -1,268 +1,183 @@
 import json
-import time
 import asyncio
-from typing import Optional, List
-from datetime import datetime, timedelta
-from app.schemas.travelplan import (
-    TravelPlan,
-    DayItinerary,
-    TravelPreference,
-    BudgetRange,
-)
-from datetime import date as DateType
+from typing import List
+import google.generativeai as genai
+from app.schemas.travelplan import TravelPlan, DayItinerary
+from app.core.config import settings
 
 
 class GeminiService:
     """Service for handling Gemini AI travel plan generation"""
 
     def __init__(self):
-        self.last_generation_time = 0.0
-        # In production, you would initialize the actual Gemini AI client here
-        # self.gemini_client = genai.GenerativeModel('gemini-pro')
+        # Initialize the Gemini AI client
+        genai.configure(api_key=settings.GEMINI_API_KEY)
+        self.model = genai.GenerativeModel(settings.GEMINI_MODEL)
 
-    async def generate_travel_plan(
-        self,
-        country: str,
-        days: int,
-        preferences: Optional[List[TravelPreference]] = None,
-        budget_range: Optional[BudgetRange] = None,
-        group_size: int = 1,
-        additional_requirements: Optional[str] = None,
-        start_date: Optional[DateType] = None,
-    ) -> Optional[TravelPlan]:
-        """Generate a travel plan using Gemini AI"""
-
-        start_time = time.time()
-
+    async def generate_travel_plan(self, country: str, days: int) -> TravelPlan:
+        """
+        Generate a travel plan using Gemini AI
+        """
         try:
-            # Set defaults for None values
-            if budget_range is None:
-                budget_range = BudgetRange.MODERATE
-            if preferences is None:
-                preferences = []
+            # Create the prompt for Gemini
+            prompt = self._create_travel_prompt(country, days)
 
-            # Create the prompt for Gemini AI
-            prompt = self._create_gemini_prompt(
-                country,
-                days,
-                preferences,
-                budget_range,
-                group_size,
-                additional_requirements,
-                start_date,
-            )
+            # Generate content using Gemini AI
+            response = await self._call_gemini_api(prompt)
 
-            # Simulate AI generation delay (replace with actual Gemini AI call)
-            await asyncio.sleep(1.0)  # Simulate processing time
-
-            # For demo purposes, generate a mock response
-            # In production, replace this with actual Gemini AI API call
-            generated_plan = self._generate_mock_plan(
-                country, days, preferences, budget_range, start_date
-            )
-
-            self.last_generation_time = time.time() - start_time
-            return generated_plan
+            # Parse the response and create TravelPlan object
+            return self._parse_gemini_response(response, country, days)
 
         except Exception as e:
-            print(f"Error generating travel plan: {e}")
-            return None
+            print(f"Error calling Gemini API: {e}")
+            # Fallback to mock response if API fails
+            return self._generate_mock_plan(country, days)
 
-    def _create_gemini_prompt(
-        self,
-        country: str,
-        days: int,
-        preferences: Optional[List[TravelPreference]],
-        budget_range: BudgetRange,
-        group_size: int,
-        additional_requirements: Optional[str],
-        start_date: Optional[DateType],
-    ) -> str:
+    def _create_travel_prompt(self, country: str, days: int) -> str:
         """Create a structured prompt for Gemini AI"""
-
-        preferences_str = (
-            ", ".join([pref.value for pref in preferences])
-            if preferences
-            else "general tourism"
-        )
-
-        prompt = f"""
-        Create a detailed {days}-day travel itinerary for {country}.
+        return f"""
+        Create a detailed {days}-day travel itinerary for {country}. 
         
-        Requirements:
-        - Destination: {country}
-        - Duration: {days} days
-        - Group size: {group_size} people
-        - Budget preference: {budget_range.value}
-        - Interests: {preferences_str}
+        Please provide the response in the following JSON format:
+        {{
+            "country": "{country}",
+            "days": {days},
+            "itinerary": [
+                {{
+                    "day": 1,
+                    "title": "Day title",
+                    "activities": [
+                        "Activity 1",
+                        "Activity 2",
+                        "Activity 3"
+                    ],
+                    "notes": "Additional notes for the day"
+                }}
+            ],
+            "budget_estimate": "Estimated budget range",
+            "best_time_to_visit": "Best time to visit information",
+            "cultural_tips": "Cultural tips and etiquette"
+        }}
+        
+        Include popular attractions, local experiences, restaurants, and practical tips.
+        Make sure each day has 3-5 activities and provide helpful notes.
         """
 
-        if start_date:
-            prompt += f"\n- Start date: {start_date.strftime('%Y-%m-%d')}"
+    async def _call_gemini_api(self, prompt: str) -> str:
+        """Call Gemini API asynchronously"""
+        try:
+            # Generate content
+            response = self.model.generate_content(prompt)
+            return response.text
+        except Exception as e:
+            raise Exception(f"Gemini API call failed: {e}")
 
-        if additional_requirements:
-            prompt += f"\n- Additional requirements: {additional_requirements}"
-
-        prompt += """
-        
-        Please provide:
-        1. A catchy title for the trip
-        2. Brief description of the travel plan
-        3. Day-by-day itinerary with:
-           - Main activities and attractions
-           - Estimated costs per day
-           - Practical tips and notes
-        4. Total estimated budget
-        
-        Format the response as a structured travel plan with clear daily breakdowns.
-        """
-
-        return prompt
-
-    def _generate_mock_plan(
-        self,
-        country: str,
-        days: int,
-        preferences: Optional[List[TravelPreference]],
-        budget_range: BudgetRange,
-        start_date: Optional[DateType],
+    def _parse_gemini_response(
+        self, response_text: str, country: str, days: int
     ) -> TravelPlan:
-        """Generate a mock travel plan for demo purposes"""
+        """Parse Gemini's response into TravelPlan object"""
+        try:
+            # Try to extract JSON from the response
+            # Sometimes Gemini wraps JSON in code blocks
+            response_text = response_text.strip()
+            if response_text.startswith("```json"):
+                response_text = response_text[7:]
+            if response_text.startswith("```"):
+                response_text = response_text[3:]
+            if response_text.endswith("```"):
+                response_text = response_text[:-3]
 
-        # Budget multipliers based on preference
-        budget_multipliers = {
-            BudgetRange.BUDGET: 50,
-            BudgetRange.MODERATE: 100,
-            BudgetRange.LUXURY: 200,
-        }
+            response_data = json.loads(response_text)
 
-        daily_budget = budget_multipliers[budget_range]
+            # Create DayItinerary objects
+            itinerary = []
+            for day_data in response_data.get("itinerary", []):
+                day_itinerary = DayItinerary(
+                    day=day_data.get("day", 1),
+                    title=day_data.get("title", f"Day {day_data.get('day', 1)}"),
+                    activities=day_data.get("activities", []),
+                    notes=day_data.get("notes", ""),
+                )
+                itinerary.append(day_itinerary)
 
-        # Generate daily itinerary
+            # Create and return TravelPlan
+            return TravelPlan(
+                country=response_data.get("country", country),
+                days=response_data.get("days", days),
+                itinerary=itinerary,
+                budget_estimate=response_data.get(
+                    "budget_estimate", "Budget information not available"
+                ),
+                best_time_to_visit=response_data.get(
+                    "best_time_to_visit", "Year-round"
+                ),
+                cultural_tips=response_data.get(
+                    "cultural_tips", "No specific cultural tips provided"
+                ),
+            )
+
+        except (json.JSONDecodeError, KeyError) as e:
+            print(f"Error parsing Gemini response: {e}")
+            # If parsing fails, try to create a basic plan from the text
+            return self._create_fallback_plan(response_text, country, days)
+
+    def _create_fallback_plan(
+        self, response_text: str, country: str, days: int
+    ) -> TravelPlan:
+        """Create a fallback plan when JSON parsing fails"""
+        # Create basic itinerary from response text
         itinerary = []
-        current_date = start_date
-
         for day in range(1, days + 1):
-            if current_date:
-                day_date = current_date + timedelta(days=day - 1)
-            else:
-                day_date = None
-
-            # Mock activities based on preferences
-            activities = self._generate_mock_activities(preferences, budget_range, day)
-
             day_itinerary = DayItinerary(
-                day_number=day,
-                day_date=day_date,
-                title=f"Day {day}: {self._get_day_theme(day, country, preferences)}",
-                activities=activities,
-                estimated_cost=daily_budget
-                * (0.8 + (day % 3) * 0.1),  # Vary daily costs
-                notes=f"Weather is typically good in {country} during this time. Bring comfortable walking shoes.",
+                day=day,
+                title=f"Day {day}: Explore {country}",
+                activities=[
+                    f"Morning: Visit local attractions",
+                    f"Afternoon: Experience local culture",
+                    f"Evening: Try traditional cuisine",
+                ],
+                notes=f"Activities for day {day} in {country}",
             )
             itinerary.append(day_itinerary)
 
-        # Create the travel plan
-        plan = TravelPlan(
+        return TravelPlan(
             country=country,
             days=days,
-            title=f"Amazing {days}-Day {country} Adventure",
-            description=f"Experience the best of {country} in {days} days with this AI-curated itinerary featuring {', '.join([p.value for p in preferences]) if preferences else 'diverse experiences'}.",
-            total_estimated_cost=daily_budget * days,
-            currency="USD",
             itinerary=itinerary,
-            gemini_generated=True,
+            budget_estimate="Budget varies depending on preferences",
+            best_time_to_visit="Year-round",
+            cultural_tips="Respect local customs and traditions",
         )
 
-        return plan
+    def _generate_mock_plan(self, country: str, days: int) -> TravelPlan:
+        """Generate a mock travel plan for fallback purposes"""
+        itinerary = []
 
-    def _get_day_theme(
-        self, day: int, country: str, preferences: Optional[List[TravelPreference]]
-    ) -> str:
-        """Generate a theme for each day"""
-        themes = [
-            f"Arrival & {country} Introduction",
-            f"Cultural Exploration",
-            f"Local Cuisine & Markets",
-            f"Historical Sites",
-            f"Nature & Outdoor Activities",
-            f"Art & Museums",
-            f"Local Neighborhoods",
-            f"Adventure Activities",
-            f"Relaxation & Wellness",
-            f"Shopping & Souvenirs",
-            f"Departure & Final Experiences",
-        ]
+        for day in range(1, days + 1):
+            activities = [
+                f"Visit top attractions in {country}",
+                f"Experience local culture and traditions",
+                f"Try authentic {country} cuisine",
+                f"Explore historical sites",
+                f"Shop for local souvenirs",
+            ]
 
-        if preferences and day <= len(preferences):
-            pref = preferences[day - 1]
-            if pref == TravelPreference.CULTURE:
-                return "Cultural Immersion"
-            elif pref == TravelPreference.FOOD:
-                return "Culinary Journey"
-            elif pref == TravelPreference.ADVENTURE:
-                return "Adventure & Thrills"
-            elif pref == TravelPreference.NATURE:
-                return "Nature Exploration"
-            elif pref == TravelPreference.HISTORY:
-                return "Historical Discovery"
+            # Select 3-4 activities for each day
+            selected_activities = activities[: min(4, len(activities))]
 
-        return themes[min(day - 1, len(themes) - 1)]
+            day_itinerary = DayItinerary(
+                day=day,
+                title=f"Day {day}: Discover {country}",
+                activities=selected_activities,
+                notes=f"Make sure to bring comfortable walking shoes and a camera for day {day}.",
+            )
+            itinerary.append(day_itinerary)
 
-    def _generate_mock_activities(
-        self,
-        preferences: Optional[List[TravelPreference]],
-        budget_range: BudgetRange,
-        day: int,
-    ) -> List[dict]:
-        """Generate mock activities for a day"""
-
-        base_activities = [
-            {
-                "time": "09:00",
-                "activity": "Breakfast at local cafe",
-                "location": "City center",
-                "cost": 15,
-                "duration": "1 hour",
-            },
-            {
-                "time": "10:30",
-                "activity": "Visit main attraction",
-                "location": "Tourist district",
-                "cost": 25,
-                "duration": "2-3 hours",
-            },
-            {
-                "time": "14:00",
-                "activity": "Lunch at traditional restaurant",
-                "location": "Local neighborhood",
-                "cost": 20,
-                "duration": "1.5 hours",
-            },
-            {
-                "time": "16:00",
-                "activity": "Explore local market",
-                "location": "Market district",
-                "cost": 10,
-                "duration": "2 hours",
-            },
-            {
-                "time": "19:00",
-                "activity": "Dinner at recommended restaurant",
-                "location": "Entertainment district",
-                "cost": 35,
-                "duration": "2 hours",
-            },
-        ]
-
-        # Adjust costs based on budget preference
-        cost_multiplier = 1.0
-        if budget_range == BudgetRange.BUDGET:
-            cost_multiplier = 0.6
-        elif budget_range == BudgetRange.LUXURY:
-            cost_multiplier = 2.0
-
-        for activity in base_activities:
-            activity["cost"] = int(activity["cost"] * cost_multiplier)
-
-        return base_activities
+        return TravelPlan(
+            country=country,
+            days=days,
+            itinerary=itinerary,
+            budget_estimate=f"Estimated budget: $100-200 per day for {country}",
+            best_time_to_visit=f"Best time to visit {country} varies by season",
+            cultural_tips=f"Learn basic phrases in the local language and respect cultural norms in {country}",
+        )

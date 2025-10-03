@@ -19,6 +19,7 @@ if settings.BACKEND_CORS_ORIGINS:
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+
 @app.get("/")
 async def root():
     """Root endpoint - health check"""
@@ -28,7 +29,6 @@ async def root():
         "docs": "/docs",
     }
 
-@app.pose()
 
 @app.get("/health")
 async def health_check():
