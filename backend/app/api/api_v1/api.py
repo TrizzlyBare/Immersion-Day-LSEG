@@ -1,5 +1,6 @@
 from fastapi import APIRouter
-from app.api.api_v1.endpoints import travelplans
+from app.api.api_v1.endpoints import items, users
 
 api_router = APIRouter()
-api_router.include_router(travelplans.router, prefix="/v1", tags=["travel-plans"])
+api_router.include_router(items.router, prefix="/items", tags=["items"])
+api_router.include_router(users.router, prefix="/users", tags=["users"])
