@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings
 import os
 
 class Settings(BaseSettings):
-    API_V1_STR: str = "/api/v1"
+    API_V1_STR: str = "/api/"
     SECRET_KEY: str = "change-me-in-production"
     PROJECT_NAME: str = "LSEG Immersion Day API"
 
